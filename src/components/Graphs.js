@@ -23,11 +23,25 @@ function Graphs({ data }) {
   const trainModel = useCallback(async () => {
     console.log('trainModel')
     console.log('data',data)
-    const inputs = data
-      .map((item) => [parseFloat(item["Year"]), parseFloat(item["Month"]), parseFloat(item["Day"]), parseFloat(item["p_ens"])])
-      .filter((input) => input.every((value) => !isNaN(value)));
-      console.log('trainModel_inputs',inputs)
-    const outputs = data.map((item) => parseFloat(item["Streamflow"])).filter((y) => !isNaN(y));
+    const inputs = [];
+    const outputs = [];
+    const pEnsValues = []; 
+
+    data.forEach((item) => {
+      const inputRow = [
+        // parseFloat(item["Year"])/100,
+        // parseFloat(item["Month"])/100,
+        // parseFloat(item["Day"])/100,
+        parseFloat(item["p_ens"])/100,
+      ];
+      const outputValue = parseFloat(item["Streamflow"])/100;
+      if (inputRow.every((value) => !isNaN(value)) && !isNaN(outputValue)) {
+        inputs.push(inputRow);
+        outputs.push(outputValue);
+        pEnsValues.push(parseFloat(item["p_ens"]));
+      }
+    });
+
     console.log('trainModel_outputs',outputs)
     const inputTensor = tf.tensor2d(inputs);
     const outputTensor = tf.tensor1d(outputs);
@@ -35,10 +49,10 @@ function Graphs({ data }) {
     console.log('trainModel_outputTensor',outputTensor)
 
     const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 1, inputShape: [4] }));
+    model.add(tf.layers.dense({ units: 1, inputShape: [1] }));
     console.log('trainModel_model',model)
     model.compile({
-      optimizer: tf.train.sgd(0.01),
+      optimizer: tf.train.sgd(0.001),
       loss: "meanSquaredError",
     });
     console.log('trainModel_compilado')
@@ -50,8 +64,8 @@ function Graphs({ data }) {
     console.log('trainModel_predictedValues',predictedValues)
 
     // Asegurar que los valores predichos se correspondan con el índice de tiempo
-    setPredictedData(predictedValues.map((y, i) => ({ x: i, y })));
-    setPredictedDataf(predictedValues.map((y, i) => ({ x: i, y })));
+    setPredictedData(predictedValues.map((y, i) => ({ x: pEnsValues[i]*100, y:y[0]*100 })));
+    setPredictedDataf(predictedValues.map((y, i) => ({ x: pEnsValues[i]*100, y:y[0]*100 })));
 
     inputTensor.dispose();
     outputTensor.dispose();
@@ -221,6 +235,12 @@ function Graphs({ data }) {
       ],
     };
   };
+  const observedData = data
+  .map((item, i) => ({
+    x: i,
+    y: parseFloat(item["Streamflow"]),
+  }))
+  .filter((point) => !isNaN(point.y));
 
   const linearOptions = {
     responsive: true,
@@ -247,7 +267,7 @@ function Graphs({ data }) {
     },
     scales: {
       x: {
-        title: { display: true, text: "Índice de Tiempo (horas)" },
+        title: { display: true, text: "Escurrimiento" },
       },
       y: {
         type: "linear",
@@ -282,14 +302,16 @@ function Graphs({ data }) {
     scales: {
       x: {
         type: "linear",
-        title: { display: true, text: "Índice de Tiempo (horas)" },
+        title: { display: true, text: "Escurrimiento" },
         min: 0,
         suggestedMax: predictedData.length,
       },
       y: {
         type: "logarithmic",
         title: { display: true, text: "Escurrimiento (m³/s)" },
-        min: 1,
+        min: Math.min(...observedData.map((d) => d.y)), // Ajustar el mínimo de acuerdo a los datos observados
+        max: Math.max(...observedData.map((d) => d.y)) * 1.1,
+        
       },
     },
   };
